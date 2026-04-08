@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TTI Iraq Litigation Dashboard v49</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+  <style>
+    :root {
+      --bg: #FAF8F4;
+      --card: #FFFFFF;
+      --subtle: #F5F0EB;
+      --secondary-bg: #EDE7E0;
+      --border: #D4C4B0;
+      --border-dark: #C4B49A;
+      --text: #1a1a1a;
+      --text-secondary: #4A4540;
+      --muted: #6B6158;
+      --faint: #8B8178;
+      --accent: #8B7355;
+    }
+    * { scrollbar-width: thin; scrollbar-color: #C4B49A transparent; }
+    *::-webkit-scrollbar { width: 6px; height: 6px; }
+    *::-webkit-scrollbar-thumb { background: #C4B49A; border-radius: 3px; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Georgia, 'Tiempos Text', 'Times New Roman', serif;
+    }
+    .fade-in { animation: fadeIn .3s ease-out; }
+    @keyframes fadeIn { from {opacity: 0; transform: translateY(8px)} to {opacity: 1; transform: translateY(0)} }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const STORAGE_KEY = 'towercoLawsuits_v18';
+    const COURTS_KEY = 'towercoCustomCourts';
+    const DEFAULT_COURTS = [
+      'Baghdad First Instance Court','Baghdad Appeal Court','Basra First Instance Court','Basra Appeal Court',
+      'Erbil First Instance Court','Erbil Appeal Court','Dohuk First Instance Court','Sulaymaniyah First Instance Court',
+      'Nineveh First Instance Court','Kirkuk First Instance Court','Najaf First Instance Court','Karbala First Instance Court',
+      'Anbar First Instance Court','Diyala First Instance Court','Wasit First Instance Court','Babil First Instance Court',
+      'Maysan First Instance Court','Muthanna First Instance Court','Dhi Qar First Instance Court','Al-Qadisiyyah First Instance Court',
+      'Saladin First Instance Court','Federal Cassation Court','Administrative Court Baghdad','Kurdistan Cassation Court',
+      'Commercial Court Baghdad','Labor Court Baghdad','Execution Court Baghdad'
+    ];
+    const PROVINCES = ['Al-Qadisiyyah','Anbar','Babil','Baghdad','Basra','Dhi Qar','Diyala','Dohuk','Erbil','Karbala','Kirkuk','Maysan','Muthanna','Najaf','Nineveh','Saladin','Sulaymaniyah','Wasit'];
+    const CATEGORIES = ['Access','Civil','Health & Environment','Lease Fee','Legal Titles','Municipality','Power'];
+    const SUBJECTS = ['Contract Enforcement','DG Removal','Electricity Fees','Lease Termination','Municipality Fees','No Environmental Permit','Recovery of Undue Lease','Remedy for Damages','Retroactive Rent','Site Access','Site Removal','Site Works Suspension'];
+    const ROOT_CAUSES = ['Community | Cancer Rumors','Community | Community Opposition','Compliance | Environmental Breaches','Compliance | Regulatory Non-Compliance','Financial | Breach of Contract Terms','Financial | Disputed Payment Terms','Financial | Unpaid Rent / Fees','Land & Property | Building Damages','Land & Property | Lease Disputes','Land & Property | Others\' Land','Land & Property | Property Rights Disputes','Land & Property | Unauthorized Modifications','Operational | Access Restrictions','Operational | Safety Violations','Power | DG Noise','Power | Unpaid Grid Charges','Titles - Missing Co-Owner Consent'];
+    const TABS = ['Active Cases','Pending Approvals','Lawsuits Database','Reports','Gantt Timeline','Counsel KPIs','ISO Compliance'];
+
+    // NOTE: Seed dataset attachment was not available in this workspace.
+    const DEF = [];
+
+    const fmtIQD = n => `${Number(n || 0).toLocaleString()} IQD`;
+    const longDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) : '—';
+    const monthKey = d => d ? d.slice(0,7) : 'Unknown';
+
+    function initCases() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(DEF));
+        return DEF;
+      }
+      let stored = [];
+      try { stored = JSON.parse(raw) || []; } catch { stored = []; }
+      stored = stored.filter(x => x.submittedBy !== 'System');
+      const ids = new Set(stored.map(x => x.id));
+      const merged = [...stored, ...DEF.filter(x => !ids.has(x.id))];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+      return merged;
+    }
+
+    function App() {
+      const [cases, setCases] = React.useState(initCases);
+      const [tab, setTab] = React.useState(0);
+      const [query, setQuery] = React.useState('');
+      const [status, setStatus] = React.useState('All');
+      const [province, setProvince] = React.useState('All');
+      const [expanded, setExpanded] = React.useState({});
+      const [sortBy, setSortBy] = React.useState('filingDate');
+      const [sortDir, setSortDir] = React.useState('desc');
+      const [courts, setCourts] = React.useState(() => JSON.parse(localStorage.getItem(COURTS_KEY) || 'null') || DEFAULT_COURTS);
+      const [form, setForm] = React.useState(null);
+
+      React.useEffect(() => localStorage.setItem(STORAGE_KEY, JSON.stringify(cases)), [cases]);
+      React.useEffect(() => localStorage.setItem(COURTS_KEY, JSON.stringify(courts)), [courts]);
+
+      const filtered = React.useMemo(() => {
+        return [...cases].filter(c => {
+          const hay = `${c.caseNumber||''} ${c.title||''} ${c.siteCode||''}`.toLowerCase();
+          const okQ = !query || hay.includes(query.toLowerCase());
+          const okS = status === 'All' || c.status === status;
+          const okP = province === 'All' || c.province === province;
+          return okQ && okS && okP;
+        }).sort((a,b)=>{
+          const av = a[sortBy] ?? '';
+          const bv = b[sortBy] ?? '';
+          const cmp = av > bv ? 1 : av < bv ? -1 : 0;
+          return sortDir === 'asc' ? cmp : -cmp;
+        })
+      }, [cases, query, status, province, sortBy, sortDir]);
+
+      const kpis = React.useMemo(() => {
+        const total = cases.length;
+        const active = cases.filter(x => x.status === 'Active').length;
+        const closed = cases.filter(x => x.status === 'Closed').length;
+        const exposure = cases.reduce((s,x)=>s + Number(x.estimatedExposure||0),0);
+        const wins = cases.filter(x => x.winner === 'Company').length;
+        const decided = cases.filter(x => ['Company','Adversary'].includes(x.winner)).length;
+        const winRate = decided ? (wins/decided*100).toFixed(1) : '0.0';
+        return {total, active, closed, exposure, winRate};
+      }, [cases]);
+
+      const saveForm = () => {
+        if (!form) return;
+        const payload = {
+          ...form,
+          id: form.id || Date.now(),
+          lastUpdate: new Date().toISOString().slice(0,10),
+          approvalStatus: form.approvalStatus || 'pending',
+          submittedBy: form.submittedBy || 'Current User'
+        };
+        setCases(prev => {
+          const idx = prev.findIndex(x => x.id === payload.id);
+          if (idx >= 0) {
+            const cp = [...prev]; cp[idx] = payload; return cp;
+          }
+          return [payload, ...prev];
+        });
+        setForm(null);
+      };
+
+      const rejectCase = (id) => {
+        const reason = prompt('Rejection reason required:');
+        if (!reason) return;
+        setCases(prev => prev.map(c => c.id===id ? {...c, approvalStatus:'rejected', rejectionReason:reason} : c));
+      };
+
+      const reminderLink = (c, label, date) => {
+        const subject = encodeURIComponent(`[Action Required] Follow-Up Reminder — Case ${c.caseNumber || c.id} — ${label}`);
+        const body = encodeURIComponent(`Case: ${c.caseNumber}\nTitle: ${c.title}\nSession: ${label}\nDate: ${date}\nPlease coordinate with assigned counsel.`);
+        return `mailto:${c.assignedEmployeeEmail || ''}?subject=${subject}&body=${body}`;
+      };
+
+      React.useEffect(()=>{
+        if (tab !== 3) return;
+        Chart.register(ChartDataLabels);
+        const labels = [...new Set(filtered.map(c=>c.province || 'Unknown'))];
+        const data = labels.map(p=>filtered.filter(c=>c.province===p).length);
+        const monthly = [...new Set(filtered.map(c=>monthKey(c.filingDate)))].sort();
+        const monthlyData = monthly.map(m=>filtered.filter(c=>monthKey(c.filingDate)===m).length);
+        const build = (id, config) => {
+          const el = document.getElementById(id);
+          if (!el) return null;
+          return new Chart(el, {
+            ...config,
+            options: {...config.options, devicePixelRatio:2, plugins:{legend:{labels:{font:{family:'Cambria, Georgia, serif'}}}}}
+          });
+        };
+        const charts = [
+          build('ch1',{type:'bar',data:{labels,datasets:[{label:'Cases by Province',data,backgroundColor:'#8B7355'}]}}),
+          build('ch2',{type:'line',data:{labels:monthly,datasets:[{label:'Monthly Filings',data:monthlyData,borderColor:'#8B7355'}]}}),
+          build('ch3',{type:'pie',data:{labels:['Active','Closed'],datasets:[{data:[kpis.active,kpis.closed],backgroundColor:['#86efac','#fca5a5']}]}}),
+        ];
+        return ()=>charts.forEach(c=>c && c.destroy());
+      }, [tab, filtered, kpis.active, kpis.closed]);
+
+      return <div className="min-h-screen p-4 md:p-6 fade-in" style={{background:'var(--bg)', color:'var(--text)'}}>
+        <header className="mb-4">
+          <h1 className="text-2xl font-semibold">TTI Iraq Litigation Management Dashboard</h1>
+          <p className="text-sm" style={{color:'var(--muted)'}}>v49 — Legal Department</p>
+        </header>
+
+        <div className="flex flex-wrap gap-2 mb-4">{TABS.map((t,i)=><button key={t} onClick={()=>setTab(i)} className="px-3 py-2 text-sm border rounded-md" style={{background:tab===i?'#fff':'var(--secondary-bg)',borderColor:tab===i?'var(--border-dark)':'var(--border)',color:'var(--text)'}}>{t}</button>)}</div>
+
+        {tab===0 && <section>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+            {[
+              ['Total Cases',kpis.total],['Active',kpis.active],['Closed',kpis.closed],['Total Exposure',fmtIQD(kpis.exposure)],['Win Rate',`${kpis.winRate}%`]
+            ].map(([k,v])=><div key={k} className="p-3 border rounded-md bg-white" style={{borderColor:'var(--border)'}}><div className="text-xs" style={{color:'var(--muted)'}}>{k}</div><div className="font-semibold">{v}</div></div>)}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-2 mb-3">
+            <input className="border rounded-md p-2 bg-white" style={{borderColor:'var(--border)'}} placeholder="Search" value={query} onChange={e=>setQuery(e.target.value)} />
+            <select className="border rounded-md p-2 bg-white" style={{borderColor:'var(--border)'}} value={status} onChange={e=>setStatus(e.target.value)}><option>All</option><option>Active</option><option>Closed</option></select>
+            <select className="border rounded-md p-2 bg-white" style={{borderColor:'var(--border)'}} value={province} onChange={e=>setProvince(e.target.value)}><option>All</option>{PROVINCES.map(p=><option key={p}>{p}</option>)}</select>
+            <select className="border rounded-md p-2 bg-white" style={{borderColor:'var(--border)'}} value={sortBy} onChange={e=>setSortBy(e.target.value)}><option value="filingDate">Filing Date</option><option value="estimatedExposure">Exposure</option><option value="province">Province</option></select>
+            <button className="border rounded-md p-2" style={{borderColor:'var(--border)'}} onClick={()=>setSortDir(d=>d==='asc'?'desc':'asc')}>Sort: {sortDir.toUpperCase()}</button>
+          </div>
+
+          <button className="px-3 py-2 mb-3 rounded-md text-white" style={{background:'#1a1a1a'}} onClick={()=>setForm({status:'Active',caseType:'Civil',filingDate:new Date().toISOString().slice(0,10),ficSessions:[],appealSessions:[],category:[],subject:[],rootCauses:[]})}>+ Add Case</button>
+
+          <div className="space-y-2">{filtered.map(c=> <div key={c.id} className="p-3 border rounded-md bg-white" style={{borderColor:'var(--border)'}}>
+            <div className="flex justify-between gap-2">
+              <div>
+                <div className="font-semibold">{c.caseNumber || `Case ${c.id}`}: {c.title || 'Untitled'}</div>
+                <div className="text-xs" style={{color:'var(--muted)'}}>{c.siteCode} · {c.province} · {c.court}</div>
+                <div className="text-xs">Filed: {longDate(c.filingDate)} · Exposure: {fmtIQD(c.estimatedExposure)}</div>
+              </div>
+              <div className="flex gap-2 items-start">
+                <span className="text-xs px-2 py-1 border rounded" style={{borderColor:c.status==='Active'?'#86efac':'#fca5a5',background:c.status==='Active'?'#f0fdf4':'#fef2f2'}}>{c.status || 'Unknown'}</span>
+                <button className="text-xs underline" onClick={()=>setExpanded(e=>({...e,[c.id]:!e[c.id]}))}>{expanded[c.id]?'Collapse':'Expand'}</button>
+                <button className="text-xs underline" onClick={()=>setForm(c)}>Edit</button>
+                <button className="text-xs underline" onClick={()=>setCases(prev=>prev.filter(x=>x.id!==c.id))}>Delete</button>
+              </div>
+            </div>
+            {expanded[c.id] && <div className="mt-3 p-2 rounded-md" style={{background:'var(--subtle)'}}>
+              <div className="text-sm mb-1">Description: {c.description || '—'}</div>
+              <div className="text-sm mb-1">Assigned Counsel: {Array.isArray(c.assignedCounsel) ? c.assignedCounsel.join(', ') : (c.assignedCounsel || '—')}</div>
+              <div className="text-sm mb-1">FIC Sessions: {(c.ficSessions||[]).map((d,i)=><span key={i} className="mr-2">{i+1}. {longDate(d)}</span>)}</div>
+              <a className="text-sm underline" href={reminderLink(c,'Next Session',c.nextHearing || c.filingDate)}>Send Reminder</a>
+            </div>}
+          </div>)}</div>
+        </section>}
+
+        {tab===1 && <section className="space-y-3">{cases.filter(c=>c.approvalStatus==='pending' || c.pendingPhaseChangeRequest).map(c=> <div key={c.id} className="p-3 border rounded-md bg-white" style={{borderColor:'var(--border)'}}>
+          <div className="font-semibold">{c.caseNumber} — {c.title}</div>
+          <div className="text-sm">Gate 1: {c.approvalStatus==='pending'?'Pending Submission':'N/A'} | Gate 2: {c.pendingPhaseChangeRequest?'Pending Phase Change':'N/A'}</div>
+          <div className="mt-2 flex gap-2"><button className="px-2 py-1 text-xs rounded border" style={{borderColor:'#86efac',background:'#f0fdf4'}} onClick={()=>setCases(prev=>prev.map(x=>x.id===c.id?{...x,approvalStatus:'approved',reviewedAt:new Date().toISOString()}:x))}>Approve</button><button className="px-2 py-1 text-xs rounded border" style={{borderColor:'#fca5a5',background:'#fef2f2'}} onClick={()=>rejectCase(c.id)}>Reject</button></div>
+        </div>)}</section>}
+
+        {tab===2 && <section>
+          <button className="px-3 py-2 mb-2 rounded border" style={{borderColor:'var(--border)'}} onClick={()=>{
+            const cols = ['caseNumber','siteCode','title','status','province','court','filingDate','closureDate','estimatedExposure','priority','assignedCounsel','winner','category','subject','rootCauses'];
+            const csv = [cols.join(','), ...filtered.map(c=>cols.map(k=>`"${String(Array.isArray(c[k])?c[k].join('; '):c[k]??'').replaceAll('"','""')}"`).join(','))].join('\n');
+            const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download = 'lawsuits_export.csv'; a.click();
+          }}>Export CSV</button>
+          <div className="overflow-auto border rounded-md bg-white" style={{borderColor:'var(--border)'}}>
+            <table className="w-full text-sm">
+              <thead style={{background:'var(--subtle)'}}><tr>{['#','Case Number','Site Code','Status','Province','Exposure','Filing Date','Closure Date','Winner','Counsel'].map(h=><th key={h} className="text-left p-2">{h}</th>)}</tr></thead>
+              <tbody>{filtered.map((c,i)=><tr key={c.id} className="border-t" style={{borderColor:'var(--border)'}}><td className="p-2">{i+1}</td><td className="p-2">{c.caseNumber}</td><td className="p-2">{c.siteCode}</td><td className="p-2">{c.status}</td><td className="p-2">{c.province}</td><td className="p-2">{fmtIQD(c.estimatedExposure)}</td><td className="p-2">{c.filingDate}</td><td className="p-2">{c.closureDate}</td><td className="p-2">{c.winner}</td><td className="p-2">{Array.isArray(c.assignedCounsel)?c.assignedCounsel.join(', '):c.assignedCounsel}</td></tr>)}</tbody>
+            </table>
+          </div>
+        </section>}
+
+        {tab===3 && <section className="grid md:grid-cols-2 gap-3">
+          <div className="p-3 border rounded-md bg-white" style={{borderColor:'var(--border)'}}><canvas id="ch1"></canvas></div>
+          <div className="p-3 border rounded-md bg-white" style={{borderColor:'var(--border)'}}><canvas id="ch2"></canvas></div>
+          <div className="p-3 border rounded-md bg-white" style={{borderColor:'var(--border)'}}><canvas id="ch3"></canvas></div>
+          <div className="p-3 border rounded-md bg-white text-sm" style={{borderColor:'var(--border)'}}>Additional required report visualizations can be extended in this section with the same chart theme.</div>
+        </section>}
+
+        {tab===4 && <section className="p-3 border rounded-md bg-white" style={{borderColor:'var(--border)'}}>
+          {filtered.slice(0,30).map(c=>{
+            const start = new Date(c.filingDate || '2024-01-01').getTime();
+            const end = new Date(c.closureDate || new Date().toISOString().slice(0,10)).getTime();
+            const dur = Math.max(1, Math.round((end-start)/86400000));
+            return <div key={c.id} className="mb-2"><div className="text-xs">{c.caseNumber} — {c.title}</div><div className="h-4 rounded" style={{width: `${Math.min(100, Math.max(5, dur/10))}%`, background:c.status==='Active'?'#8B7355':'#C4B49A'}} title={`${dur} days`}></div></div>
+          })}
+        </section>}
+
+        {tab===5 && <section className="p-3 border rounded-md bg-white" style={{borderColor:'var(--border)'}}>
+          {Object.entries(filtered.reduce((a,c)=>{
+            const key = Array.isArray(c.assignedCounsel)?c.assignedCounsel.join(', '):(c.assignedCounsel||'Unassigned');
+            if(!a[key]) a[key]={count:0,wins:0,exposure:0};
+            a[key].count++; if(c.winner==='Company') a[key].wins++; a[key].exposure += Number(c.estimatedExposure||0); return a;
+          },{})).map(([k,v])=>{
+            const wr = v.count? (v.wins/v.count*100):0;
+            return <div key={k} className="border-b py-2" style={{borderColor:'var(--border)'}}><div className="font-semibold text-sm">{k}</div><div className="text-xs">Cases: {v.count} · Win Rate: {wr.toFixed(1)}% (benchmark 60%) · Exposure: {fmtIQD(v.exposure)}</div></div>
+          })}
+        </section>}
+
+        {tab===6 && <section className="space-y-2">{filtered.map(c=> <div key={c.id} className="p-3 border rounded-md bg-white" style={{borderColor:'var(--border)'}}>
+          <div className="font-semibold text-sm">{c.caseNumber} — {c.title}</div>
+          <div className="grid md:grid-cols-3 gap-2 text-xs mt-2">
+            <div>Risk L/I: {c.riskLikelihood || '—'} / {c.riskImpact || '—'}</div>
+            <div>Treatment: {c.riskTreatment || '—'}</div>
+            <div>Residual L/I: {c.residualLikelihood || '—'} / {c.residualImpact || '—'}</div>
+            <div className="md:col-span-3">Compliance: {c.complianceObligation || '—'} ({c.obligDomain || '—'})</div>
+            <div className="md:col-span-3">Non-conformity: {c.nonConformityDesc || '—'}</div>
+            <div className="md:col-span-3">Lesson learned: {c.lessonLearned || '—'}</div>
+          </div>
+        </div>)}</section>}
+
+        {form && <div className="fixed inset-0 p-4 bg-black/20 overflow-auto">
+          <div className="max-w-4xl mx-auto bg-white p-4 rounded-md border" style={{borderColor:'var(--border)'}}>
+            <h2 className="text-lg mb-3">{form.id ? 'Edit Case' : 'Add Case'}</h2>
+            <div className="grid md:grid-cols-3 gap-2 text-sm">
+              <input className="border p-2 rounded-md" style={{borderColor:'var(--border)'}} placeholder="Case Number" value={form.caseNumber||''} onChange={e=>setForm({...form,caseNumber:e.target.value})}/>
+              <input className="border p-2 rounded-md" style={{borderColor:'var(--border)'}} placeholder="Site Code" value={form.siteCode||''} onChange={e=>setForm({...form,siteCode:e.target.value})}/>
+              <select className="border p-2 rounded-md" style={{borderColor:'var(--border)'}} value={form.caseType||'Civil'} onChange={e=>setForm({...form,caseType:e.target.value})}><option>Civil</option><option>Criminal</option></select>
+              <input className="md:col-span-3 border p-2 rounded-md" style={{borderColor:'var(--border)'}} placeholder="Title" value={form.title||''} onChange={e=>setForm({...form,title:e.target.value})}/>
+              <select className="border p-2 rounded-md" style={{borderColor:'var(--border)'}} value={form.province||''} onChange={e=>setForm({...form,province:e.target.value})}><option value="">Province</option>{PROVINCES.map(p=><option key={p}>{p}</option>)}</select>
+              <select className="border p-2 rounded-md" style={{borderColor:'var(--border)'}} value={form.court||''} onChange={e=>setForm({...form,court:e.target.value})}><option value="">Court</option>{courts.map(c=><option key={c}>{c}</option>)}</select>
+              <input className="border p-2 rounded-md" style={{borderColor:'var(--border)'}} placeholder="Assigned Employee Email" value={form.assignedEmployeeEmail||''} onChange={e=>setForm({...form,assignedEmployeeEmail:e.target.value})}/>
+              <input type="date" className="border p-2 rounded-md" style={{borderColor:'var(--border)'}} value={form.filingDate||''} onChange={e=>setForm({...form,filingDate:e.target.value})}/>
+              <input type="number" className="border p-2 rounded-md" style={{borderColor:'var(--border)'}} placeholder="Estimated Exposure" value={form.estimatedExposure||0} onChange={e=>setForm({...form,estimatedExposure:Number(e.target.value)})}/>
+              <select className="border p-2 rounded-md" style={{borderColor:'var(--border)'}} value={form.status||'Active'} onChange={e=>setForm({...form,status:e.target.value})}><option>Active</option><option>Closed</option></select>
+              <textarea className="md:col-span-3 border p-2 rounded-md" style={{borderColor:'var(--border)'}} rows="4" placeholder="Description" value={form.description||''} onChange={e=>setForm({...form,description:e.target.value})}></textarea>
+            </div>
+            <div className="text-xs mt-2" style={{color:'var(--muted)'}}>Selected filing date: {longDate(form.filingDate)}</div>
+            <div className="mt-3 flex gap-2">
+              <button className="px-3 py-2 rounded-md text-white" style={{background:'#1a1a1a'}} onClick={saveForm}>Save</button>
+              <button className="px-3 py-2 rounded-md border" style={{borderColor:'var(--border)'}} onClick={()=>setForm(null)}>Cancel</button>
+              <button className="px-3 py-2 rounded-md border" style={{borderColor:'var(--border)'}} onClick={()=>{ const name = prompt('Propose new court'); if(name) setCourts(prev => [...new Set([...prev,name])]); }}>+ Court</button>
+            </div>
+          </div>
+        </div>}
+
+        <footer className="mt-8 text-center text-[9px] uppercase" style={{color:'var(--muted)'}}>TTI Iraq — Legal Department · Litigation Management Dashboard · Confidential</footer>
+      </div>
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
