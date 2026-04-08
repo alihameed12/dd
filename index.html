@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Board Resolutions Dashboard</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>Board Resolutions</h1>
+      <p class="tagline">Track, store, and manage board resolutions</p>
+    </div>
+    <button id="newResolutionBtn" class="btn btn-primary">+ New Resolution</button>
+  </header>
+
+  <main class="container">
+    <section class="stats">
+      <div class="stat-card">
+        <span class="stat-label">Total</span>
+        <span class="stat-value" id="statTotal">0</span>
+      </div>
+      <div class="stat-card stat-passed">
+        <span class="stat-label">Passed</span>
+        <span class="stat-value" id="statPassed">0</span>
+      </div>
+      <div class="stat-card stat-pending">
+        <span class="stat-label">Pending</span>
+        <span class="stat-value" id="statPending">0</span>
+      </div>
+      <div class="stat-card stat-rejected">
+        <span class="stat-label">Rejected</span>
+        <span class="stat-value" id="statRejected">0</span>
+      </div>
+    </section>
+
+    <section class="toolbar">
+      <input type="search" id="searchInput" placeholder="Search by title, number, or content..." />
+      <select id="filterStatus">
+        <option value="">All statuses</option>
+        <option value="passed">Passed</option>
+        <option value="pending">Pending</option>
+        <option value="rejected">Rejected</option>
+      </select>
+      <select id="sortBy">
+        <option value="date-desc">Newest first</option>
+        <option value="date-asc">Oldest first</option>
+        <option value="number-asc">Number (ascending)</option>
+        <option value="title-asc">Title (A-Z)</option>
+      </select>
+      <button id="exportBtn" class="btn btn-secondary">Export JSON</button>
+      <label class="btn btn-secondary" for="importInput">Import JSON</label>
+      <input type="file" id="importInput" accept="application/json" hidden />
+    </section>
+
+    <section id="resolutionsList" class="resolutions-list">
+      <div class="empty-state" id="emptyState">
+        <h2>No resolutions yet</h2>
+        <p>Click "New Resolution" to record your first board resolution.</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal for creating/editing resolutions -->
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2 id="modalTitle">New Resolution</h2>
+        <button id="closeModalBtn" class="icon-btn" aria-label="Close">&times;</button>
+      </header>
+      <form id="resolutionForm" class="modal-body">
+        <input type="hidden" id="resolutionId" />
+
+        <div class="form-row">
+          <label for="resNumber">Resolution #</label>
+          <input type="text" id="resNumber" required placeholder="e.g. 2026-014" />
+        </div>
+
+        <div class="form-row">
+          <label for="resTitle">Title</label>
+          <input type="text" id="resTitle" required placeholder="Short descriptive title" />
+        </div>
+
+        <div class="form-row two-col">
+          <div>
+            <label for="resDate">Date</label>
+            <input type="date" id="resDate" required />
+          </div>
+          <div>
+            <label for="resStatus">Status</label>
+            <select id="resStatus" required>
+              <option value="pending">Pending</option>
+              <option value="passed">Passed</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row two-col">
+          <div>
+            <label for="resVotesFor">Votes For</label>
+            <input type="number" id="resVotesFor" min="0" value="0" />
+          </div>
+          <div>
+            <label for="resVotesAgainst">Votes Against</label>
+            <input type="number" id="resVotesAgainst" min="0" value="0" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label for="resProposedBy">Proposed By</label>
+          <input type="text" id="resProposedBy" placeholder="Board member name" />
+        </div>
+
+        <div class="form-row">
+          <label for="resContent">Resolution Text</label>
+          <textarea id="resContent" rows="6" required placeholder="Full text of the resolution..."></textarea>
+        </div>
+
+        <footer class="modal-footer">
+          <button type="button" id="cancelBtn" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Resolution</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
